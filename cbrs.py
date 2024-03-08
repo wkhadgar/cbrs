@@ -5,6 +5,7 @@ from scipy.spatial import distance
 import matplotlib.pyplot as plt
 import seaborn as sn
 
+
 # Main
 def main():
     # [1] Get the input .csv library and problem cases
@@ -14,23 +15,23 @@ def main():
     # Print
     print('\n> Initial Library')
     print(f'\n{library}')
-    # print(f'\n{cases}')
+    print(f'\n{cases}')
 
     # Select columns from library to use as base cases, except solutions
-    base = library.iloc[:, range(library.shape[1] - 1)]      # Exclude last column (solution)
+    base = library.iloc[:, range(library.shape[1] - 1)]  # Exclude last column (solution)
 
     # Print
-    # print('\n> Base')
-    # print(f'\n{base}')
+    print('\n> Base')
+    print(f'\n{base}')
 
     # [2] Initial One-hot encoding
-    base = pd.get_dummies(base)
-    problems = pd.get_dummies(cases)
+    base = pd.get_dummies(base) * 1
+    problems = pd.get_dummies(cases) * 1
 
     # Print
-    # print('\n> One-hot encoding')
-    # print(f'\n{base}')
-    # print(f'\n{problems}\n')
+    print('\n> One-hot encoding')
+    print(f'\n{base}')
+    print(f'\n{problems}\n')
 
     # [3] Calculate
     # Print
@@ -42,8 +43,8 @@ def main():
         # print(f'\n{base} for problem {i}')
 
         # [3.1] Get inverse covariance matrix for the base cases
-        covariance_matrix = base.cov()                                      # Covariance
-        inverse_covariance_matrix = np.linalg.pinv(covariance_matrix)       # Inverse
+        covariance_matrix = base.cov()  # Covariance
+        inverse_covariance_matrix = np.linalg.pinv(covariance_matrix)  # Inverse
 
         # [3.2] Get case row to evaluate
         case_row = problems.loc[i, :]
@@ -71,26 +72,29 @@ def main():
 
         # [5] Store
         # Get as operable pandas Series
-        case = pd.Series(case, index = library.columns)         # Case with Solution
-        library = library.append(case, ignore_index = True)     # Append to library
+        case = pd.DataFrame(pd.Series(case, index=library.columns)).transpose()  # Case with Solution
+        print(case)
+        print(library)
+        library = pd.concat([library, case], ignore_index=True)  # Append to library
 
         # Save 'covariance heat map (biased)' output as file
-        sn.heatmap(np.cov(base, bias = True), annot = True, fmt = 'g')
+        sn.heatmap(np.cov(base, bias=True), annot=True, fmt='g')
         plt.gcf().set_size_inches(12, 6)
         plt.title(f'Covariance Heat map #{i} \n Library cases stored {j} - Base to solve problem {i}')
         plt.savefig(f'output/covariance_heat_map_{i}.png', bbox_inches='tight')
         plt.close()
 
         # [6] Reuse
-        base = library.iloc[:, range(library.shape[1] - 1)]     # Exclude last column (solution)
-        base = pd.get_dummies(base)                             # Get new one-hot encoded base
+        base = library.iloc[:, range(library.shape[1] - 1)]  # Exclude last column (solution)
+        base = pd.get_dummies(base) * 1  # Get new one-hot encoded base
 
     # [7] Output
     print('\n> Output library')
     print(f'\n{library}')
 
     # Save 'library' output as file
-    library.to_csv('output/library.csv', index = False)
+    library.to_csv('output/library.csv', index=False)
+
 
 # Call
 if __name__ == '__main__':

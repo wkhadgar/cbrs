@@ -15,7 +15,7 @@ Overcast, Hot, Normal, False, Yes
 Rainy, Mild, High, True, No
 Sunny, Mild, Normal, False, Yes
 Rainy, Cool, Normal, False, Yes
-Overcast, Cool, High, False, Yes
+Overcast, Cool, High, False, No
 Sunny, Cool, High, True, Yes
 Rainy, Hot, High, True, No
 Rainy, Cool, High, True, No
