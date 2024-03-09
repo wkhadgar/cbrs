@@ -6,96 +6,67 @@ import matplotlib.pyplot as plt
 import seaborn as sn
 
 
+def get_data():
+    lib, test = pd.read_csv('input/database.csv'), pd.read_csv("input/test_data.csv")
+
+    print('\n> Dataset inicial em one-hot encoding:')
+    print(f'\n{lib}')
+    print(f'\n{test}')
+
+    return lib, test
+
+
 # Main
 def main():
-    # [1] Get the input .csv library and problem cases
-    # {pandas.DataFrame}
-    library, cases = pd.read_csv('input/library.csv'), pd.read_csv('input/cases.csv')
+    library, cases = get_data()
 
-    # Print
-    print('\n> Initial Library')
-    print(f'\n{library}')
-    print(f'\n{cases}')
+    # A base e os problemas não contém as soluções.
+    base = library.iloc[:, range(library.shape[1] - 1)]
+    problems = cases.iloc[:, range(cases.shape[1] - 1)]
 
-    # Select columns from library to use as base cases, except solutions
-    base = library.iloc[:, range(library.shape[1] - 1)]  # Exclude last column (solution)
-
-    # Print
-    print('\n> Base')
-    print(f'\n{base}')
-
-    # [2] Initial One-hot encoding
-    base = pd.get_dummies(base) * 1
-    problems = pd.get_dummies(cases) * 1
-
-    # Print
-    print('\n> One-hot encoding')
-    print(f'\n{base}')
-    print(f'\n{problems}\n')
-
-    # [3] Calculate
-    # Print
-    print('\n> Calculating\n')
-
-    # Move through all problem cases
+    print('\n> Calculando\n')
     for i in range(problems.shape[0]):
-        # Print
-        # print(f'\n{base} for problem {i}')
 
-        # [3.1] Get inverse covariance matrix for the base cases
-        covariance_matrix = base.cov()  # Covariance
-        inverse_covariance_matrix = np.linalg.pinv(covariance_matrix)  # Inverse
+        # Obter a matriz de covariância inversa para os casos de base
+        inverse_covariance_matrix = np.linalg.pinv(base.cov())
 
-        # [3.2] Get case row to evaluate
         case_row = problems.loc[i, :]
-
-        # Empty distances array to store mahalanobis distances obtained comparing each library cases
         distances = np.zeros(base.shape[0])
 
-        # [3.3] For each base cases rows
         for j in range(base.shape[0]):
-            # Get base case row
             base_row = base.loc[j, :]
 
-            # [3.4] Calculate mahalanobis distance between case row and base cases, and store it
+            # Calcular a distância Mahalanobis entre a linha de casos e os casos de base.
             distances[j] = distance.mahalanobis(case_row, base_row, inverse_covariance_matrix)
 
-        # [3.5] Returns the index (row) of the minimum value in distances calculated
         min_distance_row = np.argmin(distances)
 
-        # [4] Get solution based on index of found minimum distance, and append it to main library
-        # From cases, append library 'similar' solution
-        case = np.append(cases.iloc[i, :], library.iloc[min_distance_row, -1])
+        # Obtém a solução com base no índice da distância mínima encontrada e anexa à biblioteca principal dos casos.
+        case = np.append(problems.iloc[i, :], library.iloc[min_distance_row, -1])
+        print(
+            f'> Para o caso {i}: '
+            f'{[problems.columns[ind[0]] for ind in [(ti, tl) for ti, tl in [(k, label) for k, label in enumerate(problems.iloc[i, :].to_numpy())] if tl == 1]]},'
+            f' a solução é {case[-1]}')
 
-        # Print
-        print(f'> For case/problem {i}: {cases.iloc[i, :].to_numpy()}, solution is {case[-1]}')
+        # Acumula o novo conhecimento.
+        case = pd.DataFrame(case, list(library.columns)).transpose()
+        case.iloc[-1, :-1] = [int(i) for i in case.iloc[-1, :-1]]
+        library = pd.concat([library, case], ignore_index=True)
 
-        # [5] Store
-        # Get as operable pandas Series
-        case = pd.DataFrame(pd.Series(case, index=library.columns)).transpose()  # Case with Solution
-        print(case)
-        print(library)
-        library = pd.concat([library, case], ignore_index=True)  # Append to library
+        # Dados para validação.
+        # sn.heatmap(np.cov(base, bias=True), annot=True, fmt='g')
+        # plt.gcf().set_size_inches(12, 6)
+        # plt.title(f'Mapa de calor da covariância #{i} \n Casos base salvos {j} - Base para solucionar o problema {i}')
+        # plt.savefig(f'output/covariance_heat_map_{i}.png', bbox_inches='tight')
+        # plt.close()
 
-        # Save 'covariance heat map (biased)' output as file
-        sn.heatmap(np.cov(base, bias=True), annot=True, fmt='g')
-        plt.gcf().set_size_inches(12, 6)
-        plt.title(f'Covariance Heat map #{i} \n Library cases stored {j} - Base to solve problem {i}')
-        plt.savefig(f'output/covariance_heat_map_{i}.png', bbox_inches='tight')
-        plt.close()
+        base = library.iloc[:, range(library.shape[1] - 1)]  # Exclui a solução novamente.
 
-        # [6] Reuse
-        base = library.iloc[:, range(library.shape[1] - 1)]  # Exclude last column (solution)
-        base = pd.get_dummies(base) * 1  # Get new one-hot encoded base
-
-    # [7] Output
-    print('\n> Output library')
+    print('\n> Conhecimento final:')
     print(f'\n{library}')
 
-    # Save 'library' output as file
     library.to_csv('output/library.csv', index=False)
 
 
-# Call
 if __name__ == '__main__':
     main()
