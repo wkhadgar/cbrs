@@ -14,18 +14,14 @@ def get_data() -> tuple[tuple[tuple[str], tuple[str]], DataFrame]:
 
     print(f"No dataset, há {len(symptoms)} sintomas para avaliar e {len(prognostics)} prognósticos possíveis.\n")
 
-    print("Sintomas:")
-    for s in sorted(symptoms):
-        print(f"\t• {s}")
-
-    print("\nPrognósticos:")
+    print("\nPrognósticos avaliáveis:")
     for p in sorted(prognostics):
         print(f"\t• {p}")
 
     return (symptoms, prognostics), db
 
 
-def commit_knowledge(new_inference: pd.DataFrame, raw_inference: tuple[list[str], str]):
+def commit_knowledge(new_inference: pd.DataFrame, raw_inference: list):
     try:
         library = pd.read_csv('output/library.csv')
         library = pd.concat([library, new_inference], ignore_index=True)
@@ -33,20 +29,7 @@ def commit_knowledge(new_inference: pd.DataFrame, raw_inference: tuple[list[str]
         library = new_inference
 
     inferences_list.append((raw_inference, new_inference))
-    print(inferences_list[-1])
     library.to_csv('output/library.csv', index=False)
-
-
-def save_knowledge(coherent_rows: list):
-    knowledge = pd.read_csv('output/library.csv')
-    database = pd.read_csv('input/database.csv')
-
-    for i in range(knowledge.shape[0]):
-        if i not in coherent_rows:
-            knowledge.drop(i, axis=0, inplace=True)
-
-    database = pd.concat([database, knowledge], ignore_index=True)
-    database.to_csv('output/database.csv', index=False)
 
 
 def make_prognostic(knowledge: pd.DataFrame, symptoms: list[str]) -> str:
@@ -73,14 +56,14 @@ def make_prognostic(knowledge: pd.DataFrame, symptoms: list[str]) -> str:
     min_distance_row = distances_index_sorted[0]
 
     # Obtém a solução com base no índice da distância mínima encontrada e anexa à biblioteca principal dos casos.
-    estimated_prognostic = knowledge.iloc[min_distance_row, -1]
+    estimated_prognostic: str = knowledge.iloc[min_distance_row, -1]
     case = np.append(list(symptom_presences.values()), estimated_prognostic)
     print(f"> Para o caso avaliado: {' + '.join(symptoms)}, o prognóstico é {estimated_prognostic}")
 
     # Acumula o novo conhecimento.
     case = pd.DataFrame(case, list(knowledge.columns)).transpose()
     case.iloc[-1, :-1] = [int(i) for i in case.iloc[-1, :-1]]
-    commit_knowledge(case, (symptoms, estimated_prognostic))
+    commit_knowledge(case, [symptoms.copy(), estimated_prognostic])
 
     return estimated_prognostic
 
@@ -114,13 +97,45 @@ def clean_selection_cb():
     result_label.config(text="")
 
 
-def open_menu(event):
+def open_menu_cb():
     menu_symptoms.focus()
     menu_symptoms.event_generate('<Down>')
 
 
-def close_menu(event):
+def close_menu_cb():
     menu_symptoms.selection_clear()
+
+
+def save_coherent_knowledge_cb():
+    validated_knowledge = pd.DataFrame()
+    database = pd.read_csv('input/database.csv')
+
+    for i, inf in enumerate(inferences_list):
+        if inf_checkboxes[i].get():
+            validated_knowledge = pd.concat([validated_knowledge, inf[1]], ignore_index=True)
+
+    if not validated_knowledge.empty:
+        database = pd.concat([database, validated_knowledge], ignore_index=True)
+        database.to_csv('input/database.csv', index=False)
+
+    inferences_list.clear()
+    inf_checkboxes.clear()
+    update_history()
+
+
+def update_history():
+    for widget in history_frame.winfo_children():
+        widget.destroy()
+
+    ttk.Label(history_frame, text="Selecione as inferências coerentes.").pack(fill=tk.BOTH)
+    for inf in inferences_list:
+        check_var = tk.BooleanVar()
+        check_frame = ttk.Frame(history_frame)
+        check_button = ttk.Checkbutton(check_frame, text=f"{' + '.join(inf[0][0])} → {inf[0][1]}",
+                                       variable=check_var)
+        check_button.pack(side=tk.LEFT)
+        check_frame.pack(fill=tk.BOTH)
+        inf_checkboxes.append(check_var)
 
 
 if __name__ == '__main__':
@@ -128,6 +143,7 @@ if __name__ == '__main__':
 
     case_symptoms = []
     inferences_list = []
+    inf_checkboxes = []
 
     # Inicialização da janela
     root = tk.Tk()
@@ -146,8 +162,8 @@ if __name__ == '__main__':
     selected_symptom.trace_add("write", lambda x, y, z: add_symptom_button.config(state=tk.NORMAL))
     menu_symptoms = ttk.Combobox(selection_frame, textvariable=selected_symptom, width=40,
                                  values=list(map(str.capitalize, sorted(sym))))
-    menu_symptoms.bind("<Button-1>", open_menu)
-    menu_symptoms.bind("<FocusOut>", close_menu)
+    menu_symptoms.bind("<Button-1>", lambda e: open_menu_cb())
+    menu_symptoms.bind("<FocusOut>", lambda e: close_menu_cb())
     menu_symptoms.pack(padx=10, pady=5, side=tk.LEFT)
 
     add_symptom_button = ttk.Button(selection_frame, text="Adicionar", state=tk.DISABLED, command=add_symptom_cb)
@@ -174,6 +190,18 @@ if __name__ == '__main__':
     result_label = ttk.Label(main_frame, text="")
     result_label.pack(padx=10, pady=1)
     tabs.add(main_frame, text="Inferência")
+
+    # Inicializar a lista de dados temporários
+    knowledge_frame = ttk.Frame(tabs)
+    history_frame = ttk.Frame(knowledge_frame)
+    history_frame.pack()
+    knowledge_frame.bind("<FocusIn>", lambda e: update_history())
+
+    save_coherent_knowledge_button = ttk.Button(knowledge_frame, text="Salvar Selecionadas",
+                                                command=save_coherent_knowledge_cb)
+    save_coherent_knowledge_button.pack(padx=10, pady=10)
+
+    tabs.add(knowledge_frame, text="Verificação e Conhecimento")
 
     # Executar aplicação
     root.mainloop()
