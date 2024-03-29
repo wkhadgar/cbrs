@@ -1,4 +1,3 @@
-# Import
 import numpy as np
 import pandas as pd
 from pandas import DataFrame
@@ -26,10 +25,33 @@ def get_data() -> tuple[tuple[tuple[str], tuple[str]], DataFrame]:
     return (symptoms, prognostics), db
 
 
-# Main
-def make_prognostic(library: pd.DataFrame, symptoms: list[str]) -> str:
-    base = library.iloc[:, range(library.shape[1] - 1)]
-    symptom_presences = {f"{s}": 0 for s in library.columns[:-1]}
+def commit_knowledge(new_inference: pd.DataFrame, raw_inference: tuple[list[str], str]):
+    try:
+        library = pd.read_csv('output/library.csv')
+        library = pd.concat([library, new_inference], ignore_index=True)
+    except FileNotFoundError:
+        library = new_inference
+
+    inferences_list.append((raw_inference, new_inference))
+    print(inferences_list[-1])
+    library.to_csv('output/library.csv', index=False)
+
+
+def save_knowledge(coherent_rows: list):
+    knowledge = pd.read_csv('output/library.csv')
+    database = pd.read_csv('input/database.csv')
+
+    for i in range(knowledge.shape[0]):
+        if i not in coherent_rows:
+            knowledge.drop(i, axis=0, inplace=True)
+
+    database = pd.concat([database, knowledge], ignore_index=True)
+    database.to_csv('output/database.csv', index=False)
+
+
+def make_prognostic(knowledge: pd.DataFrame, symptoms: list[str]) -> str:
+    base = knowledge.iloc[:, range(knowledge.shape[1] - 1)]
+    symptom_presences = {f"{s}": 0 for s in knowledge.columns[:-1]}
 
     for symptom in symptoms:
         symptom_presences[symptom] = 1
@@ -47,19 +69,18 @@ def make_prognostic(library: pd.DataFrame, symptoms: list[str]) -> str:
         distances[i] = distance.mahalanobis(list(symptom_presences.values()), base_symptoms_case,
                                             inverse_covariance_matrix)
 
-    min_distance_row = np.argmin(distances)
+    distances_index_sorted = np.argsort(distances)
+    min_distance_row = distances_index_sorted[0]
 
     # Obtém a solução com base no índice da distância mínima encontrada e anexa à biblioteca principal dos casos.
-    estimated_prognostic = library.iloc[min_distance_row, -1]
+    estimated_prognostic = knowledge.iloc[min_distance_row, -1]
     case = np.append(list(symptom_presences.values()), estimated_prognostic)
-    print(f"> Para o caso avaliado: {' + '.join(symptoms)}, o prognóstico é {case[-1]}")
+    print(f"> Para o caso avaliado: {' + '.join(symptoms)}, o prognóstico é {estimated_prognostic}")
 
     # Acumula o novo conhecimento.
-    case = pd.DataFrame(case, list(library.columns)).transpose()
+    case = pd.DataFrame(case, list(knowledge.columns)).transpose()
     case.iloc[-1, :-1] = [int(i) for i in case.iloc[-1, :-1]]
-    library = pd.concat([library, case], ignore_index=True)
-
-    library.to_csv('output/library.csv', index=False)
+    commit_knowledge(case, (symptoms, estimated_prognostic))
 
     return estimated_prognostic
 
@@ -76,9 +97,11 @@ def add_symptom_cb():
 
 
 def make_prognostic_cb():
-    result_label.config(text="Calculando...")
+    result_label.config(text="> Analisando...")
+    result_label.update()
     pr = make_prognostic(lib, case_symptoms)
     result_label.config(text=f"> Para o caso avaliado, o prognóstico é {pr}")
+    make_prognostic_button.config(state=tk.DISABLED)
 
 
 def clean_selection_cb():
@@ -104,6 +127,7 @@ if __name__ == '__main__':
     (sym, prog), lib = get_data()
 
     case_symptoms = []
+    inferences_list = []
 
     # Inicialização da janela
     root = tk.Tk()
@@ -111,7 +135,11 @@ if __name__ == '__main__':
     style = ttk.Style()
     style.theme_use("clam")
 
-    main_frame = ttk.Frame(root)
+    tabs = ttk.Notebook(root)
+    tabs.pack(fill="both", expand=True)
+
+    main_frame = ttk.Frame(tabs)
+
     selection_frame = ttk.Frame(main_frame)
     selected_symptom = tk.StringVar(selection_frame)  # Menu drop-down para selecionar sintoma
     selected_symptom.set("Selecione um Sintoma")
@@ -145,7 +173,7 @@ if __name__ == '__main__':
     # Rótulo para exibir resultado da verificação
     result_label = ttk.Label(main_frame, text="")
     result_label.pack(padx=10, pady=1)
-    main_frame.pack()
+    tabs.add(main_frame, text="Inferência")
 
     # Executar aplicação
     root.mainloop()
