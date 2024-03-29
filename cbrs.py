@@ -32,7 +32,12 @@ def commit_knowledge(new_inference: pd.DataFrame, raw_inference: list):
     library.to_csv('output/library.csv', index=False)
 
 
-def make_prognostic(knowledge: pd.DataFrame, symptoms: list[str]) -> str:
+def distance_similarity(distances, target_index):
+    sorted_indexes = np.argsort(distances)
+    return 1 - (distances[target_index] / distances[sorted_indexes[-1]])
+
+
+def make_prognostic(knowledge: pd.DataFrame, symptoms: list[str]) -> (str, str):
     base = knowledge.iloc[:, range(knowledge.shape[1] - 1)]
     symptom_presences = {f"{s}": 0 for s in knowledge.columns[:-1]}
 
@@ -45,27 +50,39 @@ def make_prognostic(knowledge: pd.DataFrame, symptoms: list[str]) -> str:
     inverse_covariance_matrix = np.linalg.pinv(base.cov())
 
     distances = np.zeros(base.shape[0])
+    distances_alt = np.zeros(base.shape[0])
+    one_hot_symptoms = list(symptom_presences.values())
     for i in range(base.shape[0]):
         base_symptoms_case = base.loc[i, :]
 
-        # Calcular a distância Mahalanobis entre a linha de casos e os casos de base.
-        distances[i] = distance.mahalanobis(list(symptom_presences.values()), base_symptoms_case,
-                                            inverse_covariance_matrix)
+        distances[i] = distance.correlation(one_hot_symptoms, base_symptoms_case)
+        distances_alt[i] = distance.mahalanobis(one_hot_symptoms, base_symptoms_case, inverse_covariance_matrix)
 
     distances_index_sorted = np.argsort(distances)
+    distances_index_sorted_alt = np.argsort(distances_alt)
     min_distance_row = distances_index_sorted[0]
+    alt_min_distance_row = distances_index_sorted_alt[0]
 
     # Obtém a solução com base no índice da distância mínima encontrada e anexa à biblioteca principal dos casos.
     estimated_prognostic: str = knowledge.iloc[min_distance_row, -1]
+    alt_estimated_prognostic: str = knowledge.iloc[alt_min_distance_row, -1]
     case = np.append(list(symptom_presences.values()), estimated_prognostic)
-    print(f"> Para o caso avaliado: {' + '.join(symptoms)}, o prognóstico é {estimated_prognostic}")
+
+    estimated_prognostic_sureness = distance_similarity(distances, min_distance_row) * 100
+    alt_estimated_prognostic_sureness = distance_similarity(distances_alt, alt_min_distance_row) * 100
+
+    print(
+        f"> Para o caso avaliado: {' + '.join(symptoms)}, o prognóstico é "
+        f"{estimated_prognostic}:{estimated_prognostic_sureness:.2f}% ou "
+        f"{alt_estimated_prognostic}:{alt_estimated_prognostic_sureness:.2f}%")
 
     # Acumula o novo conhecimento.
     case = pd.DataFrame(case, list(knowledge.columns)).transpose()
     case.iloc[-1, :-1] = [int(i) for i in case.iloc[-1, :-1]]
     commit_knowledge(case, [symptoms.copy(), estimated_prognostic])
 
-    return estimated_prognostic
+    return (estimated_prognostic, estimated_prognostic_sureness), (
+        alt_estimated_prognostic, alt_estimated_prognostic_sureness)
 
 
 def add_symptom_cb():
@@ -82,8 +99,8 @@ def add_symptom_cb():
 def make_prognostic_cb():
     result_label.config(text="> Analisando...")
     result_label.update()
-    pr = make_prognostic(lib, case_symptoms)
-    result_label.config(text=f"> Para o caso avaliado, o prognóstico é {pr}")
+    pr, alt_pr = make_prognostic(lib, case_symptoms)
+    result_label.config(text=f"> Para o caso avaliado, o prognóstico é {pr[1]}%: {pr[0]} ou {alt_pr[1]}%: {alt_pr[0]}")
     make_prognostic_button.config(state=tk.DISABLED)
 
 
