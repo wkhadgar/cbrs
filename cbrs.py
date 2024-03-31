@@ -89,7 +89,7 @@ def add_symptom_cb():
 
 
 def make_prognostic_cb():
-    result_label.config(text="> Analisando...")
+    result_label.config(text="> Analisando... ⌛")
     result_label.update()
     prg_dict = make_prognostic(lib, case_symptoms)
 
@@ -142,7 +142,6 @@ def update_history_cb():
     for widget in history_frame.winfo_children():
         widget.destroy()
 
-    ttk.Label(history_frame, text="Selecione as inferências coerentes.").pack(fill=tk.BOTH)
     for inf in inferences_list:
         check_var = tk.BooleanVar()
         check_frame = ttk.Frame(history_frame)
@@ -185,9 +184,7 @@ if __name__ == '__main__':
     add_symptom_button.pack(pady=10, side=tk.RIGHT)
     selection_frame.pack()
 
-    symptoms_list_label = ttk.Label(main_frame, text="Sintomas relatados:", font=("Arial", 10, "bold"))
-    symptoms_list_label.pack()
-
+    ttk.Label(main_frame, text="Sintomas relatados:", font=("Arial", 10, "bold")).pack()
     symptoms_list = tk.Text(main_frame, height=10, width=40, state=tk.DISABLED)
     symptoms_list.pack(side=tk.TOP, padx=10, pady=1)
 
@@ -203,18 +200,17 @@ if __name__ == '__main__':
 
     result_label = ttk.Label(main_frame, text="")
     result_label.pack(padx=10, pady=1)
-    tabs.add(main_frame, text="Inferência")
+    tabs.add(main_frame, text="🧩 Inferência")
 
     knowledge_frame = ttk.Frame(tabs)
     history_frame = ttk.Frame(knowledge_frame)
     history_frame.pack()
+    ttk.Label(knowledge_frame, text="Selecione as inferências coerentes.").pack()
     knowledge_frame.bind("<FocusIn>", lambda e: update_history_cb())
 
-    save_coherent_knowledge_button = ttk.Button(knowledge_frame, text="Salvar Selecionadas",
-                                                command=save_coherent_knowledge_cb)
-    save_coherent_knowledge_button.pack(padx=10, pady=10)
+    ttk.Button(knowledge_frame, text="Salvar Selecionadas", command=save_coherent_knowledge_cb).pack(padx=10, pady=10)
 
-    tabs.add(knowledge_frame, text="Verificação e Conhecimento")
+    tabs.add(knowledge_frame, text="🧠 Verificação e Conhecimento")
 
     # Executar aplicação
     root.mainloop()
