@@ -5,6 +5,10 @@ from scipy.spatial import distance
 import tkinter as tk
 from tkinter import ttk
 
+reported_symptoms = []
+inferences_list = []
+inf_checkboxes = []
+
 
 def get_data() -> tuple[tuple[tuple[str], tuple[str]], DataFrame]:
     db = pd.read_csv('input/database.csv')
@@ -78,20 +82,25 @@ def make_prognostic(knowledge: pd.DataFrame, symptoms: list[str]) -> (str, str):
 
 
 def add_symptom_cb():
-    make_prognostic_button.config(state=tk.NORMAL)
-    clean_selections_button.config(state=tk.NORMAL)
-    symptom = selected_symptom.get().lower().strip()
-    if (symptom not in case_symptoms) and (symptom in sym):
-        case_symptoms.append(symptom.lower().strip())
-        symptoms_list.config(state=tk.NORMAL)
-        symptoms_list.insert(tk.END, f"• {symptom.capitalize()}\n")
-        symptoms_list.config(state=tk.DISABLED)
+    symptom = selected_symptom_var.get().lower().strip()
+
+    if (symptom not in reported_symptoms) and (symptom in all_symptoms):
+        reported_symptoms.append(symptom.lower().strip())
+        symptoms_list_box.config(state=tk.NORMAL)
+        symptoms_list_box.insert(tk.END, f"• {symptom.capitalize()}\n")
+        symptoms_list_box.config(state=tk.DISABLED)
+
+        make_prognostic_button.config(state=tk.NORMAL)
+        clean_selections_button.config(state=tk.NORMAL)
+    else:
+        make_prognostic_button.config(state=tk.DISABLED)
+        clean_selections_button.config(state=tk.DISABLED)
 
 
 def make_prognostic_cb():
     result_label.config(text="> Analisando... ⌛")
     result_label.update()
-    prg_dict = make_prognostic(lib, case_symptoms)
+    prg_dict = make_prognostic(knowledge, reported_symptoms)
 
     prog_str = ""
     for m, pr in prg_dict.items():
@@ -103,22 +112,13 @@ def make_prognostic_cb():
 
 
 def clean_selection_cb():
-    case_symptoms.clear()
-    symptoms_list.config(state=tk.NORMAL)
-    symptoms_list.delete("1.0", tk.END)
-    symptoms_list.config(state=tk.DISABLED)
+    reported_symptoms.clear()
+    symptoms_list_box.config(state=tk.NORMAL)
+    symptoms_list_box.delete("1.0", tk.END)
+    symptoms_list_box.config(state=tk.DISABLED)
     make_prognostic_button.config(state=tk.DISABLED)
     clean_selections_button.config(state=tk.DISABLED)
     result_label.config(text="")
-
-
-def open_menu_cb():
-    symptoms_list_menu.focus()
-    symptoms_list_menu.event_generate('<Down>')
-
-
-def close_menu_cb():
-    symptoms_list_menu.selection_clear()
 
 
 def save_coherent_knowledge_cb():
@@ -153,13 +153,8 @@ def update_history_cb():
 
 
 if __name__ == '__main__':
-    (sym, prog), lib = get_data()
+    (all_symptoms, all_prognostics), knowledge = get_data()
 
-    case_symptoms = []
-    inferences_list = []
-    inf_checkboxes = []
-
-    # Inicialização da janela
     root = tk.Tk()
     root.title('Sistema de Prognóstico de Doenças')
     style = ttk.Style()
@@ -171,22 +166,23 @@ if __name__ == '__main__':
     main_frame = ttk.Frame(tabs)
 
     selection_frame = ttk.Frame(main_frame)
-    selected_symptom = tk.StringVar(selection_frame)
-    selected_symptom.set("Selecione um Sintoma")
-    selected_symptom.trace_add("write", lambda x, y, z: add_symptom_button.config(state=tk.NORMAL))
-    symptoms_list_menu = ttk.Combobox(selection_frame, textvariable=selected_symptom, width=40,
-                                      values=list(map(str.capitalize, sorted(sym))))
-    symptoms_list_menu.bind("<Button-1>", lambda e: open_menu_cb())
-    symptoms_list_menu.bind("<FocusOut>", lambda e: close_menu_cb())
-    symptoms_list_menu.pack(padx=10, pady=5, side=tk.LEFT)
+    selected_symptom_var = tk.StringVar(selection_frame)
+    selected_symptom_var.set("Selecione um Sintoma")
+    selected_symptom_var.trace_add("write", lambda x, y, z: add_symptom_button.config(state=tk.NORMAL))
+    symptoms_list_combobox = ttk.Combobox(selection_frame, textvariable=selected_symptom_var, width=40,
+                                          values=list(map(str.capitalize, sorted(all_symptoms))))
+    symptoms_list_combobox.bind("<Button-1>", lambda e:
+                                symptoms_list_combobox.focus() or symptoms_list_combobox.event_generate('<Down>'))
+    symptoms_list_combobox.bind("<FocusOut>", lambda e: symptoms_list_combobox.selection_clear())
+    symptoms_list_combobox.pack(padx=10, pady=5, side=tk.LEFT)
 
     add_symptom_button = ttk.Button(selection_frame, text="Adicionar", state=tk.DISABLED, command=add_symptom_cb)
     add_symptom_button.pack(pady=10, side=tk.RIGHT)
     selection_frame.pack()
 
     ttk.Label(main_frame, text="Sintomas relatados:", font=("Arial", 10, "bold")).pack()
-    symptoms_list = tk.Text(main_frame, height=10, width=40, state=tk.DISABLED)
-    symptoms_list.pack(side=tk.TOP, padx=10, pady=1)
+    symptoms_list_box = tk.Text(main_frame, height=10, width=40, state=tk.DISABLED)
+    symptoms_list_box.pack(side=tk.TOP, padx=10, pady=1)
 
     prognostic_frame = ttk.Frame(main_frame)
     make_prognostic_button = ttk.Button(prognostic_frame, text="Realizar Prognóstico", state=tk.DISABLED,
