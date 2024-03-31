@@ -32,7 +32,7 @@ def commit_knowledge(new_inference: pd.DataFrame, raw_inference: list):
     library.to_csv('output/library.csv', index=False)
 
 
-def distance_similarity(distances, target_index):
+def distance_similarity(distances, target_index) -> float:
     sorted_indexes = np.argsort(distances)
     return 1 - (distances[target_index] / distances[sorted_indexes[-1]])
 
@@ -41,48 +41,40 @@ def make_prognostic(knowledge: pd.DataFrame, symptoms: list[str]) -> (str, str):
     base = knowledge.iloc[:, range(knowledge.shape[1] - 1)]
     symptom_presences = {f"{s}": 0 for s in knowledge.columns[:-1]}
 
+    print(f"\n\n>Caso: {' + '.join(symptoms)}")
     for symptom in symptoms:
         symptom_presences[symptom] = 1
 
-    print('\n> Calculando...\n')
+    metrics = ["correlation", "jaccard"]
+    distances = {metric: np.zeros(base.shape[0]) for metric in metrics}
 
-    # Obter a matriz de covariância inversa para os casos de base
-    inverse_covariance_matrix = np.linalg.pinv(base.cov())
-
-    distances = np.zeros(base.shape[0])
-    distances_alt = np.zeros(base.shape[0])
     one_hot_symptoms = list(symptom_presences.values())
-    for i in range(base.shape[0]):
-        base_symptoms_case = base.loc[i, :]
 
-        distances[i] = distance.correlation(one_hot_symptoms, base_symptoms_case)
-        distances_alt[i] = distance.mahalanobis(one_hot_symptoms, base_symptoms_case, inverse_covariance_matrix)
+    best_inf = "NULL"
+    best_ratio = 0.0
+    estimated_prognostics = {}
+    for metric in metrics:
+        distances[metric] = distance.cdist(np.array([one_hot_symptoms]), base, metric)
 
-    distances_index_sorted = np.argsort(distances)
-    distances_index_sorted_alt = np.argsort(distances_alt)
-    min_distance_row = distances_index_sorted[0]
-    alt_min_distance_row = distances_index_sorted_alt[0]
+        min_metric_index = np.argsort(distances[metric][0])[0]
+        inference = knowledge.iloc[min_metric_index, -1]
+        closeness = distance_similarity(distances[metric][0], min_metric_index)
+        estimated_prognostics[metric] = {"inference": inference, "closeness": closeness}
 
-    # Obtém a solução com base no índice da distância mínima encontrada e anexa à biblioteca principal dos casos.
-    estimated_prognostic: str = knowledge.iloc[min_distance_row, -1]
-    alt_estimated_prognostic: str = knowledge.iloc[alt_min_distance_row, -1]
-    case = np.append(list(symptom_presences.values()), estimated_prognostic)
+        if closeness > best_ratio:
+            best_ratio = closeness
+            best_inf = inference
 
-    estimated_prognostic_sureness = distance_similarity(distances, min_distance_row) * 100
-    alt_estimated_prognostic_sureness = distance_similarity(distances_alt, alt_min_distance_row) * 100
+        print(f"\tPor {metric} -> {inference} ({closeness * 100:.2f})")
 
-    print(
-        f"> Para o caso avaliado: {' + '.join(symptoms)}, o prognóstico é "
-        f"{estimated_prognostic}:{estimated_prognostic_sureness:.2f}% ou "
-        f"{alt_estimated_prognostic}:{alt_estimated_prognostic_sureness:.2f}%")
+    case = np.append(one_hot_symptoms, best_inf)
 
     # Acumula o novo conhecimento.
     case = pd.DataFrame(case, list(knowledge.columns)).transpose()
     case.iloc[-1, :-1] = [int(i) for i in case.iloc[-1, :-1]]
-    commit_knowledge(case, [symptoms.copy(), estimated_prognostic])
+    commit_knowledge(case, [symptoms.copy(), best_inf])
 
-    return (estimated_prognostic, estimated_prognostic_sureness), (
-        alt_estimated_prognostic, alt_estimated_prognostic_sureness)
+    return estimated_prognostics
 
 
 def add_symptom_cb():
@@ -99,8 +91,14 @@ def add_symptom_cb():
 def make_prognostic_cb():
     result_label.config(text="> Analisando...")
     result_label.update()
-    pr, alt_pr = make_prognostic(lib, case_symptoms)
-    result_label.config(text=f"> Para o caso avaliado, o prognóstico é {pr[1]}%: {pr[0]} ou {alt_pr[1]}%: {alt_pr[0]}")
+    prg_dict = make_prognostic(lib, case_symptoms)
+
+    prog_str = ""
+    for m, pr in prg_dict.items():
+        prog_str += f"    Por {m.capitalize()} → {pr['inference']} ({pr['closeness'] * 100:.2f}%) ou \n"
+
+    result_label.config(text=f"> Para o caso avaliado, o prognóstico é :\n"
+                             f"{prog_str[:-4]}")
     make_prognostic_button.config(state=tk.DISABLED)
 
 
@@ -115,12 +113,12 @@ def clean_selection_cb():
 
 
 def open_menu_cb():
-    menu_symptoms.focus()
-    menu_symptoms.event_generate('<Down>')
+    symptoms_list_menu.focus()
+    symptoms_list_menu.event_generate('<Down>')
 
 
 def close_menu_cb():
-    menu_symptoms.selection_clear()
+    symptoms_list_menu.selection_clear()
 
 
 def save_coherent_knowledge_cb():
@@ -137,10 +135,10 @@ def save_coherent_knowledge_cb():
 
     inferences_list.clear()
     inf_checkboxes.clear()
-    update_history()
+    update_history_cb()
 
 
-def update_history():
+def update_history_cb():
     for widget in history_frame.winfo_children():
         widget.destroy()
 
@@ -174,14 +172,14 @@ if __name__ == '__main__':
     main_frame = ttk.Frame(tabs)
 
     selection_frame = ttk.Frame(main_frame)
-    selected_symptom = tk.StringVar(selection_frame)  # Menu drop-down para selecionar sintoma
+    selected_symptom = tk.StringVar(selection_frame)
     selected_symptom.set("Selecione um Sintoma")
     selected_symptom.trace_add("write", lambda x, y, z: add_symptom_button.config(state=tk.NORMAL))
-    menu_symptoms = ttk.Combobox(selection_frame, textvariable=selected_symptom, width=40,
-                                 values=list(map(str.capitalize, sorted(sym))))
-    menu_symptoms.bind("<Button-1>", lambda e: open_menu_cb())
-    menu_symptoms.bind("<FocusOut>", lambda e: close_menu_cb())
-    menu_symptoms.pack(padx=10, pady=5, side=tk.LEFT)
+    symptoms_list_menu = ttk.Combobox(selection_frame, textvariable=selected_symptom, width=40,
+                                      values=list(map(str.capitalize, sorted(sym))))
+    symptoms_list_menu.bind("<Button-1>", lambda e: open_menu_cb())
+    symptoms_list_menu.bind("<FocusOut>", lambda e: close_menu_cb())
+    symptoms_list_menu.pack(padx=10, pady=5, side=tk.LEFT)
 
     add_symptom_button = ttk.Button(selection_frame, text="Adicionar", state=tk.DISABLED, command=add_symptom_cb)
     add_symptom_button.pack(pady=10, side=tk.RIGHT)
@@ -203,16 +201,14 @@ if __name__ == '__main__':
     clean_selections_button.pack(pady=10, padx=30, side=tk.LEFT)
     prognostic_frame.pack()
 
-    # Rótulo para exibir resultado da verificação
     result_label = ttk.Label(main_frame, text="")
     result_label.pack(padx=10, pady=1)
     tabs.add(main_frame, text="Inferência")
 
-    # Inicializar a lista de dados temporários
     knowledge_frame = ttk.Frame(tabs)
     history_frame = ttk.Frame(knowledge_frame)
     history_frame.pack()
-    knowledge_frame.bind("<FocusIn>", lambda e: update_history())
+    knowledge_frame.bind("<FocusIn>", lambda e: update_history_cb())
 
     save_coherent_knowledge_button = ttk.Button(knowledge_frame, text="Salvar Selecionadas",
                                                 command=save_coherent_knowledge_cb)
