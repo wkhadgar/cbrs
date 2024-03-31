@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pandas as pd
 from pandas import DataFrame
@@ -33,6 +35,12 @@ def commit_knowledge(new_inference: pd.DataFrame, raw_inference: list):
         library = new_inference
 
     inferences_list.append((raw_inference, new_inference))
+
+    try:
+        os.mkdir("output")
+    except FileExistsError:
+        pass
+
     library.to_csv('output/library.csv', index=False)
 
 
